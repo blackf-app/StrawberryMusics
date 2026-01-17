@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 export const useAudioPlayer = (tracks) => {
-    const audioRef = useRef(new Audio());
+    const audioRef = useRef(null);
     const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -11,6 +11,20 @@ export const useAudioPlayer = (tracks) => {
     const [isShuffled, setIsShuffled] = useState(false);
     const [repeatMode, setRepeatMode] = useState('none'); // 'none', 'all', 'one'
     const [isLoading, setIsLoading] = useState(false);
+
+    // Initialize audio element with iOS-specific attributes
+    useEffect(() => {
+        if (!audioRef.current) {
+            const audio = new Audio();
+            // iOS-specific attributes for background playback
+            audio.setAttribute('webkit-playsinline', 'true');
+            audio.setAttribute('playsinline', 'true');
+            audio.preload = 'auto';
+            // Prevent iOS from pausing audio when leaving page
+            audio.autoplay = false;
+            audioRef.current = audio;
+        }
+    }, []);
 
     // Refs to hold latest values for use in event handlers
     const tracksRef = useRef(tracks);
@@ -59,6 +73,7 @@ export const useAudioPlayer = (tracks) => {
     // Handle track ended using refs for latest state
     const handleTrackEnded = useCallback(() => {
         const audio = audioRef.current;
+        if (!audio) return;
         const currentRepeatMode = repeatModeRef.current;
         const shuffled = isShuffledRef.current;
         const currentTracks = tracksRef.current;
@@ -91,9 +106,10 @@ export const useAudioPlayer = (tracks) => {
         }
     }, [getNextIndexFromRefs]);
 
-    // Initialize audio element
+    // Initialize audio element event listeners
     useEffect(() => {
         const audio = audioRef.current;
+        if (!audio) return;
 
         const handleTimeUpdate = () => {
             setCurrentTime(audio.currentTime);
@@ -133,8 +149,8 @@ export const useAudioPlayer = (tracks) => {
 
     // Load track when currentTrackIndex changes
     useEffect(() => {
-        if (currentTrack) {
-            const audio = audioRef.current;
+        const audio = audioRef.current;
+        if (currentTrack && audio) {
             audio.src = currentTrack.src;
             audio.load();
             setCurrentTime(0);
@@ -146,19 +162,140 @@ export const useAudioPlayer = (tracks) => {
         }
     }, [currentTrackIndex, currentTrack]);
 
+    // Handle visibility change - important for iOS background playback
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const audio = audioRef.current;
+            if (!audio) return;
+
+            if (document.visibilityState === 'visible') {
+                // When returning to the page, sync state
+                if (isPlayingRef.current && audio.paused) {
+                    // Audio should be playing but is paused - try to resume
+                    audio.play().catch(console.error);
+                } else if (!isPlayingRef.current && !audio.paused) {
+                    // Audio shouldn't be playing but is - sync state
+                    setIsPlaying(true);
+                }
+            } else {
+                // Page is hidden - on iOS, we need to ensure audio stays active
+                // This is handled by Media Session API, but we add a fallback
+                if (isPlayingRef.current && !audio.paused) {
+                    // Keep track of position for potential recovery
+                    const currentPos = audio.currentTime;
+
+                    // iOS workaround: create a periodic check to ensure playback continues
+                    const checkInterval = setInterval(() => {
+                        if (isPlayingRef.current && audio.paused && audio.src) {
+                            audio.currentTime = currentPos;
+                            audio.play().catch(() => {
+                                // If play fails, clear interval
+                                clearInterval(checkInterval);
+                            });
+                        }
+                    }, 1000);
+
+                    // Clear after 30 seconds to prevent memory leak
+                    setTimeout(() => clearInterval(checkInterval), 30000);
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
     // Update volume
     useEffect(() => {
-        audioRef.current.volume = isMuted ? 0 : volume;
+        if (audioRef.current) {
+            audioRef.current.volume = isMuted ? 0 : volume;
+        }
     }, [volume, isMuted]);
 
+    // Media Session API for background playback support (especially iOS)
+    useEffect(() => {
+        if ('mediaSession' in navigator) {
+            // Update metadata when track changes
+            if (currentTrack) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: currentTrack.title || 'Unknown Title',
+                    artist: currentTrack.artist || 'Unknown Artist',
+                    album: currentTrack.album || 'Strawberry Music',
+                    artwork: currentTrack.cover ? [
+                        { src: currentTrack.cover, sizes: '512x512', type: 'image/png' }
+                    ] : []
+                });
+            }
+        }
+    }, [currentTrack]);
+
+    // Register Media Session action handlers
+    useEffect(() => {
+        if ('mediaSession' in navigator) {
+            const handleMediaSessionPlay = () => {
+                audioRef.current.play().catch(console.error);
+                setIsPlaying(true);
+            };
+
+            const handleMediaSessionPause = () => {
+                audioRef.current.pause();
+                setIsPlaying(false);
+            };
+
+            const handleMediaSessionPrevious = () => {
+                const audio = audioRef.current;
+                const currentTracks = tracksRef.current;
+                const currentIdx = currentTrackIndexRef.current;
+
+                if (!currentTracks || currentTracks.length === 0) return;
+
+                if (audio.currentTime > 3) {
+                    audio.currentTime = 0;
+                } else {
+                    const prevIndex = currentIdx === 0 ? currentTracks.length - 1 : currentIdx - 1;
+                    setCurrentTrackIndex(prevIndex);
+                    setIsPlaying(true);
+                }
+            };
+
+            const handleMediaSessionNext = () => {
+                const nextIndex = getNextIndexFromRefs();
+                setCurrentTrackIndex(nextIndex);
+                setIsPlaying(true);
+            };
+
+            navigator.mediaSession.setActionHandler('play', handleMediaSessionPlay);
+            navigator.mediaSession.setActionHandler('pause', handleMediaSessionPause);
+            navigator.mediaSession.setActionHandler('previoustrack', handleMediaSessionPrevious);
+            navigator.mediaSession.setActionHandler('nexttrack', handleMediaSessionNext);
+
+            // Update playback state
+            navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+            return () => {
+                navigator.mediaSession.setActionHandler('play', null);
+                navigator.mediaSession.setActionHandler('pause', null);
+                navigator.mediaSession.setActionHandler('previoustrack', null);
+                navigator.mediaSession.setActionHandler('nexttrack', null);
+            };
+        }
+    }, [isPlaying, getNextIndexFromRefs]);
+
     const play = useCallback(() => {
-        audioRef.current.play().catch(console.error);
-        setIsPlaying(true);
+        if (audioRef.current) {
+            audioRef.current.play().catch(console.error);
+            setIsPlaying(true);
+        }
     }, []);
 
     const pause = useCallback(() => {
-        audioRef.current.pause();
-        setIsPlaying(false);
+        if (audioRef.current) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+        }
     }, []);
 
     const toggle = useCallback(() => {
@@ -190,6 +327,7 @@ export const useAudioPlayer = (tracks) => {
     // Manual next button - always go to next track and keep playing
     const handleNext = useCallback(() => {
         const audio = audioRef.current;
+        if (!audio) return;
         const currentRepeatMode = repeatModeRef.current;
 
         if (currentRepeatMode === 'one') {
@@ -207,6 +345,7 @@ export const useAudioPlayer = (tracks) => {
     // Previous button handler
     const handlePrev = useCallback(() => {
         const audio = audioRef.current;
+        if (!audio) return;
         const currentTracks = tracksRef.current;
         const currentIdx = currentTrackIndexRef.current;
 
@@ -224,8 +363,10 @@ export const useAudioPlayer = (tracks) => {
     }, []);
 
     const seek = useCallback((time) => {
-        audioRef.current.currentTime = time;
-        setCurrentTime(time);
+        if (audioRef.current) {
+            audioRef.current.currentTime = time;
+            setCurrentTime(time);
+        }
     }, []);
 
     const seekByPercent = useCallback((percent) => {
@@ -259,7 +400,9 @@ export const useAudioPlayer = (tracks) => {
         setIsPlaying(true);
         // The useEffect will handle loading and playing
         setTimeout(() => {
-            audioRef.current.play().catch(console.error);
+            if (audioRef.current) {
+                audioRef.current.play().catch(console.error);
+            }
         }, 100);
     }, []);
 
