@@ -1,0 +1,100 @@
+.now-playing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
+}
+
+.album-art-container {
+    position: relative;
+    width: 280px;
+    height: 280px;
+}
+
+.album-art {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-xl);
+    object-fit: cover;
+    box-shadow: var(--shadow-lg);
+    transition: all var(--transition-base);
+}
+
+.album-art.playing {
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.album-art-glow {
+    position: absolute;
+    inset: -20px;
+    background: var(--gradient-primary);
+    filter: blur(60px);
+    opacity: 0;
+    transition: opacity var(--transition-slow);
+    z-index: -1;
+    border-radius: 50%;
+}
+
+.album-art-container.playing .album-art-glow {
+    opacity: 0.3;
+}
+
+.track-info {
+    text-align: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.track-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.track-artist {
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.track-album {
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
+    margin-top: var(--space-xs);
+}
+
+/* Loading Spinner */
+.loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: var(--radius-xl);
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--glass-border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@media (max-width: 768px) {
+    .album-art-container {
+        width: 200px;
+        height: 200px;
+    }
+
+    .track-title {
+        font-size: 1.25rem;
+        max-width: 250px;
+    }
+}

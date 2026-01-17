@@ -1,0 +1,78 @@
+.player-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    padding: var(--space-md) var(--space-xl);
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.controls-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+}
+
+.controls-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Repeat Icon Variants */
+.repeat-one-indicator {
+    position: relative;
+}
+
+.repeat-one-indicator::after {
+    content: '1';
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    font-size: 8px;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+/* Play button specific styling */
+.play-btn svg {
+    margin-left: 2px;
+    /* Optical center for play icon */
+}
+
+.play-btn.is-playing svg {
+    margin-left: 0;
+}
+
+/* Smaller icon buttons for secondary controls */
+.controls-secondary .icon-btn {
+    width: 36px;
+    height: 36px;
+}
+
+/* Skip buttons */
+.skip-btn {
+    width: 48px;
+    height: 48px;
+}
+
+.skip-btn:hover {
+    transform: scale(1.05);
+}
+
+.skip-btn:active {
+    transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+    .player-controls {
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    .play-btn {
+        width: 56px;
+        height: 56px;
+    }
+}
